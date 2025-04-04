@@ -5,17 +5,49 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "burgdashboard",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jensbuwalda.burgdashboard",
+      "buildNumber": "1.0.0",
+      "associatedDomains": [
+        "applinks:api.burg-dashboard.nl",
+        "applinks:burg-dashboard.nl"
+      ]
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.jensbuwalda.burgdashboard",
+      "versionCode": 1,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "api.burg-dashboard.nl",
+              "pathPrefix": "/scan"
+            },
+            {
+              "scheme": "https",
+              "host": "burg-dashboard.nl",
+              "pathPrefix": "/scan"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +63,12 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "De app heeft toegang tot je camera nodig om QR-codes te kunnen scannen."
         }
       ]
     ],
