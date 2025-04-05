@@ -12,14 +12,24 @@ import AppHeader from '../components/AppHeader';
 const supabaseUrl = 'https://vtyvgtgehayxexwgzerp.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eXZndGdlaGF5eGV4d2d6ZXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyODU2NTcsImV4cCI6MjA1Nzg2MTY1N30.prrEEjOmufQJ1yrXBDIYXtIIoemFKwyYglFABxTF5tU';
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// Functie om een nieuwe Supabase client te maken
+const createSupabaseClient = () => {
+  // Voor elk gebruik een verse client
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+};
+
+// Gebruik een functie die altijd een nieuwe client geeft
+// Verminder zo problemen met oude/corrupte state
+const getSupabase = () => {
+  return createSupabaseClient();
+};
 
 // Interface voor gebruikersgegevens
 interface UserProfile {
@@ -41,6 +51,7 @@ export default function ProfileScreen() {
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
+      const supabase = getSupabase();
       const { data: { user }, error } = await supabase.auth.getUser();
       
       if (error) {
@@ -70,6 +81,59 @@ export default function ProfileScreen() {
     }
   };
 
+  // Complete uitlogfunctie die alle auth data opschoont
+  const completeSignOut = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Volledige uitlog procedure gestart...');
+      
+      // 1. Alle Supabase auth keys uit AsyncStorage verwijderen
+      const keys = await AsyncStorage.getAllKeys();
+      const authKeys = keys.filter(key => 
+        key.startsWith('supabase.') || 
+        key.includes('auth') || 
+        key === 'authSession'
+      );
+      
+      if (authKeys.length > 0) {
+        console.log('📋 Te verwijderen keys:', authKeys);
+        await AsyncStorage.multiRemove(authKeys);
+        console.log('✓ AsyncStorage opgeschoond');
+      }
+      
+      // 2. Bij supabase signOut aanroepen - met nieuwe client
+      const supabase = getSupabase();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('❌ Fout bij Supabase signOut:', error);
+      } else {
+        console.log('✓ Supabase sessie succesvol afgesloten');
+      }
+      
+      // 3. Direct naar login navigeren
+      console.log('🚪 Navigeren naar login scherm...');
+      router.replace('/login');
+      
+      // 4. Extra reload na korte vertraging (fallback)
+      setTimeout(() => {
+        console.log('🔄 Veiligheidscheck: extra navigatie naar login');
+        router.push('/login');
+      }, 500);
+      
+    } catch (error) {
+      console.error('❌ Fout bij volledig uitloggen:', error);
+      
+      // Zelfs bij fouten proberen we naar login te navigeren
+      try {
+        router.replace('/login');
+      } catch (navError) {
+        console.error('Navigatie fout:', navError);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     Alert.alert(
       'Uitloggen',
@@ -81,52 +145,7 @@ export default function ProfileScreen() {
         },
         {
           text: 'Uitloggen',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              // Supabase sessie volledig opschonen
-              try {
-                // Alle Supabase items uit AsyncStorage verwijderen
-                const keys = await AsyncStorage.getAllKeys();
-                const supabaseKeys = keys.filter(key => 
-                  key.startsWith('supabase.') || 
-                  key.includes('auth') || 
-                  key === 'authSession'
-                );
-                
-                console.log('Te verwijderen auth keys:', supabaseKeys);
-                if (supabaseKeys.length > 0) {
-                  await AsyncStorage.multiRemove(supabaseKeys);
-                }
-                
-                console.log('Alle auth storage opgeschoond');
-              } catch (storageError) {
-                console.warn('Fout bij opschonen storage:', storageError);
-                // Doorgaan met uitloggen, zelfs als opschonen van storage mislukt
-              }
-              
-              // Nu uitloggen bij Supabase
-              const { error } = await supabase.auth.signOut();
-              if (error) throw error;
-              
-              console.log('Succesvol uitgelogd');
-              
-              // Force navigatie naar login
-              router.replace('/login');
-              
-              // Refresh de app na korte tijd
-              setTimeout(() => {
-                // Dit zal de hele app state opnieuw initialiseren
-                router.replace('/login');
-              }, 300);
-            } catch (error: any) {
-              console.error('Uitlogfout:', error.message);
-              Alert.alert('Fout bij uitloggen', error.message);
-            } finally {
-              setLoading(false);
-            }
-          },
+          onPress: completeSignOut,
           style: 'destructive'
         }
       ]

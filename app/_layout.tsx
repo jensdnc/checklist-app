@@ -10,14 +10,24 @@ import { usePathname, useRouter, Slot } from 'expo-router';
 const supabaseUrl = 'https://vtyvgtgehayxexwgzerp.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eXZndGdlaGF5eGV4d2d6ZXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyODU2NTcsImV4cCI6MjA1Nzg2MTY1N30.prrEEjOmufQJ1yrXBDIYXtIIoemFKwyYglFABxTF5tU';
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// Functie om een nieuwe Supabase client te maken
+const createSupabaseClient = () => {
+  // Voor elk gebruik een verse client
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+};
+
+// Gebruik een functie die altijd een nieuwe client geeft
+// Verminder zo problemen met oude/corrupte state
+const getSupabase = () => {
+  return createSupabaseClient();
+};
 
 export default function AppLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -30,18 +40,65 @@ export default function AppLayout() {
   // Controleer of we op het loginscherm of profielscherm zijn
   const isLoginScreen = pathname === '/login';
   const isProfileScreen = pathname === '/profile';
+  
+  // Hard reset functie
+  const hardResetAuthState = async () => {
+    try {
+      console.log('⚠️ HARD RESET van auth state...');
+      
+      // Alle AsyncStorage keys ophalen
+      const allKeys = await AsyncStorage.getAllKeys();
+      
+      // Alle auth/supabase keys vinden
+      const authKeys = allKeys.filter(key => 
+        key.startsWith('supabase.') || 
+        key.includes('auth') || 
+        key === 'authSession'
+      );
+      
+      // Als er auth keys zijn, verwijder ze
+      if (authKeys.length > 0) {
+        console.log('Verwijderen van keys:', authKeys);
+        await AsyncStorage.multiRemove(authKeys);
+      }
+      
+      // Sessie sluiten bij supabase
+      const supabase = getSupabase();
+      await supabase.auth.signOut();
+      
+      console.log('Auth state reset voltooid. App state wordt gerest.');
+      
+      // Reset app state
+      setIsAuthenticated(false);
+      setIsReady(false);
+      
+      // Na kleine vertraging opnieuw controleren
+      setTimeout(() => {
+        setIsReady(true);
+        router.replace('/login');
+      }, 500);
+      
+    } catch (error) {
+      console.error('Fout bij hard reset:', error);
+      
+      // Zelfs bij fouten sturen we de gebruiker naar login
+      setIsAuthenticated(false);
+      router.replace('/login');
+    }
+  };
 
   useEffect(() => {
     // Controleer authenticatiestatus bij opstarten
     checkAuthenticationStatus();
 
     // Luister naar auth veranderingen
+    const supabase = getSupabase();
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         console.log(`Auth state gewijzigd: ${event}`, session ? 'Sessie aanwezig' : 'Geen sessie');
         
         if (session) {
-          console.log('Gebruiker is ingelogd');
+          console.log('Gebruiker is ingelogd, event:', event);
           setIsAuthenticated(true);
           
           // Bij inloggen, zorg ervoor dat we de gebruiker doorsturen
@@ -52,13 +109,14 @@ export default function AppLayout() {
             }
           }
         } else {
-          console.log('Gebruiker is niet ingelogd');
+          console.log('Gebruiker is niet ingelogd, event:', event);
           setIsAuthenticated(false);
           
           // Bij uitloggen, terug naar login scherm
           if (event === 'SIGNED_OUT') {
             console.log('Zojuist uitgelogd, navigeren naar login');
-            router.replace('/login');
+            // Hard reset bij uitloggen
+            hardResetAuthState();
           }
         }
       }
@@ -70,7 +128,7 @@ export default function AppLayout() {
         authListener.subscription.unsubscribe();
       }
     };
-  }, [isReady]);
+  }, [isReady, pathname]);
 
   // Extra helper functie om AsyncStorage te debuggen
   const debugAuthStorage = async () => {
@@ -106,23 +164,21 @@ export default function AppLayout() {
       await debugAuthStorage();
       
       console.log('Controleren van gebruikerssessie...');
+      
+      // Gebruik een verse supabase instantie
+      const supabase = getSupabase();
       const { data, error } = await supabase.auth.getSession();
       
       if (error) {
-        console.error('Sessie fout:', error.message);
-        setIsAuthenticated(false);
-        setIsReady(true);
+        console.error('⚠️ Sessie fout:', error.message);
         
-        // Als er een fout is en niet op login pagina, stuur door naar login
-        if (pathname !== '/login') {
-          console.log('Sessie fout, doorsturen naar login');
-          router.replace('/login');
-        }
+        // Bij sessie fouten, probeer een hard reset
+        await hardResetAuthState();
         return;
       }
       
       if (data.session) {
-        console.log('Geldige sessie gevonden', data.session);
+        console.log('✓ Geldige sessie gevonden', data.session);
         setIsAuthenticated(true);
         
         // Als de gebruiker op login pagina is maar is ingelogd, stuur direct door naar home
@@ -131,7 +187,7 @@ export default function AppLayout() {
           router.replace('/');
         }
       } else {
-        console.log('Geen geldige sessie gevonden');
+        console.log('✗ Geen geldige sessie gevonden');
         setIsAuthenticated(false);
         
         // Als gebruiker niet is ingelogd en niet op login pagina is, stuur door naar login
@@ -145,12 +201,9 @@ export default function AppLayout() {
       setIsReady(true);
     } catch (error: any) {
       console.error('Auth error details:', error);
-      setIsAuthenticated(false);
-      setIsReady(true);
-      // Bij een fout in auth, stuur terug naar login
-      if (pathname !== '/login') {
-        router.replace('/login');
-      }
+      
+      // Bij een fout, hard reset uitvoeren
+      await hardResetAuthState();
     }
   };
 

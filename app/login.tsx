@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { ThemedView } from '../components/ThemedView';
 import { ThemedText } from '../components/ThemedText';
@@ -10,19 +10,54 @@ import { Ionicons } from '@expo/vector-icons';
 const supabaseUrl = 'https://vtyvgtgehayxexwgzerp.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eXZndGdlaGF5eGV4d2d6ZXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyODU2NTcsImV4cCI6MjA1Nzg2MTY1N30.prrEEjOmufQJ1yrXBDIYXtIIoemFKwyYglFABxTF5tU';
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+const createSupabaseClient = () => {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+};
+
+const getSupabase = () => {
+  return createSupabaseClient();
+};
 
 export default function SimpleLoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    cleanupOldAuth();
+  }, []);
+
+  const cleanupOldAuth = async () => {
+    try {
+      const supabase = getSupabase();
+      const { data } = await supabase.auth.getSession();
+      
+      if (data.session) {
+        console.log('Bestaande sessie opschonen voor nieuwe login...');
+        await supabase.auth.signOut();
+        
+        const keys = await AsyncStorage.getAllKeys();
+        const authKeys = keys.filter(key => 
+          key.startsWith('supabase.') || 
+          key.includes('auth') || 
+          key === 'authSession'
+        );
+        
+        if (authKeys.length > 0) {
+          await AsyncStorage.multiRemove(authKeys);
+        }
+      }
+    } catch (error) {
+      console.error('Fout bij opschonen oude sessie:', error);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -33,32 +68,38 @@ export default function SimpleLoginScreen() {
     try {
       setLoading(true);
       
-      // Login request uitvoeren
+      await cleanupOldAuth();
+      
+      const supabase = getSupabase();
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error('Login error:', error);
         Alert.alert('Fout bij inloggen', error.message);
         return;
       }
 
       if (data && data.session) {
-        console.log('Login succesvol', data.session);
+        console.log('Login succesvol, sessie ID:', data.session.access_token.substring(0, 10) + '...');
         
         try {
-          // Direct naar index navigeren zonder timeouts of extra stappen
           router.replace('/');
         } catch (navError) {
           console.error('Navigatie fout:', navError);
-          // Als navigatie mislukt, probeer opnieuw zonder extra logica
-          router.push('/');
+          setTimeout(() => {
+            router.push('/');
+          }, 300);
         }
+      } else {
+        Alert.alert('Login fout', 'Kon geen sessie aanmaken. Probeer opnieuw.');
       }
     } catch (error: any) {
-      console.error('Login error:', error.message);
-      Alert.alert('Login mislukt', 'Er is een fout opgetreden bij het inloggen');
+      console.error('Onverwachte login error:', error);
+      Alert.alert('Login mislukt', 
+        'Er is een onverwachte fout opgetreden bij het inloggen. Probeer opnieuw.');
     } finally {
       setLoading(false);
     }
