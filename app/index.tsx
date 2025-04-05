@@ -256,6 +256,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#43976A',
     borderRadius: 16,
     padding: 20,
+    paddingTop: 26,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -266,6 +267,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: 'white',
+    marginTop: 6,
   },
   welcomeSubtitle: {
     fontSize: 16,
