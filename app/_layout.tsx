@@ -2,96 +2,73 @@ import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme, Text, View, ActivityIndicator } from 'react-native';
-import { usePathname, useRouter, Slot } from 'expo-router';
+import { usePathname, useRouter, Stack, Slot } from 'expo-router';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
 
-// Routebescherming component
-function ProtectedRouteGuard() {
-  const { user, loading } = useAuth();
-  const pathname = usePathname();
-  const router = useRouter();
-  const [redirecting, setRedirecting] = useState(false);
-  
-  console.log('🛡️ Route Guard - Huidige pagina:', pathname);
-  console.log('🛡️ Route Guard - Ingelogd:', !!user);
-  console.log('🛡️ Route Guard - Laden:', loading);
-  
-  // Bepaal welke routes toegankelijk zijn zonder inloggen
-  const isPublicRoute = pathname === '/login';
-  
-  // Effect om te controleren of gebruiker naar login moet worden gestuurd
-  useEffect(() => {
-    const checkAuth = async () => {
-      // Voorkom dubbele redirects
-      if (redirecting) return;
-      
-      // Alleen uitvoeren als de authenticatie status bekend is (niet loading)
-      if (!loading) {
-        // Als gebruiker niet is ingelogd EN niet op een publieke route is
-        if (!user && !isPublicRoute) {
-          console.log('🔒 Niet-ingelogde gebruiker probeert beveiligde route te openen:', pathname);
-          console.log('🔒 Doorsturen naar login...');
-          
-          setRedirecting(true);
-          
-          try {
-            // Direct doorsturen naar login pagina
-            await router.replace('/login');
-          } catch (e) {
-            console.error('⚠️ Navigatiefout bij doorsturen naar login:', e);
-            // Fallback navigatie in geval van fouten
-            setTimeout(() => {
-              router.push('/login');
-            }, 100);
-          }
-          
-          // Reset redirecting na een korte delay
-          setTimeout(() => {
-            setRedirecting(false);
-          }, 500);
-        }
-      }
-    };
-    
-    checkAuth();
-  }, [user, loading, pathname, isPublicRoute, redirecting]);
-  
-  // Als we nog bezig zijn met laden, toon een laadscherm
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" color="#43976A" />
-        <Text style={{ marginTop: 20, color: '#333' }}>App wordt geladen...</Text>
-      </View>
-    );
-  }
-  
-  // Als gebruiker op login pagina is en niet ingelogd, of gebruiker is ingelogd, render normaal
-  if ((isPublicRoute && !user) || user) {
-    return <RootLayoutNav />;
-  }
-  
-  // In alle andere gevallen, toon een eenvoudig laadscherm terwijl we doorsturen naar login
+// Publieke routes die zonder inloggen toegankelijk zijn
+const publicRoutes = ['/login'];
+
+// Hoofdcomponent met AuthProvider
+export default function AppLayout() {
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#43976A" />
-      <Text style={{ marginTop: 20, color: '#333' }}>Doorsturen naar login...</Text>
-    </View>
+    <AuthProvider>
+      <RootLayoutComponent />
+    </AuthProvider>
   );
 }
 
-// Layout wrapper component met tabs
-function RootLayoutNav() {
+// Root component met conditionele navigatie
+function RootLayoutComponent() {
+  // Begin altijd met een Slot renderen om de fout te voorkomen
+  return <Slot />;
+}
+
+// Beveiligde Tab Navigatie, wordt alleen gebruikt in index.tsx, etc.
+export function useProtectedRoute() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  // Publieke routes die zonder inloggen toegankelijk zijn
+  const publicRoutes = ['/login'];
+  const isPublicRoute = publicRoutes.includes(pathname);
+  
+  useEffect(() => {
+    // Wacht tot authenticatie geladen is
+    if (!loading) {
+      // Niet ingelogd en op beveiligde route? -> redirect naar login
+      if (!user && !isPublicRoute) {
+        console.log('🔒 Toegang geweigerd tot beveiligde route:', pathname);
+        
+        // Gebruik een timeout om te zorgen dat navigatie gebeurt na de render cyclus
+        setTimeout(() => {
+          router.replace('/login');
+        }, 50);
+      }
+      
+      // Wel ingelogd en op login pagina? -> redirect naar home
+      if (user && pathname === '/login') {
+        console.log('🏠 Al ingelogd, doorsturen naar home');
+        
+        // Gebruik een timeout om te zorgen dat navigatie gebeurt na de render cyclus
+        setTimeout(() => {
+          router.replace('/');
+        }, 50);
+      }
+    }
+  }, [user, loading, pathname, isPublicRoute]);
+  
+  // Geeft de loading status en user terug zodat componenten kunnen beslissen wat te tonen
+  return { isLoading: loading, user, isAuthenticated: !!user };
+}
+
+// Tab navigatie component - wordt gebruikt in de individuele pagina's
+export function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const pathname = usePathname();
-  const { user, loading } = useAuth();
   
-  // Bepaal of gebruiker is ingelogd
-  const isAuthenticated = !!user;
-
-  // Controleer of we op het loginscherm of profielscherm zijn
-  const isLoginScreen = pathname === '/login';
+  // Controleer of we op het profielscherm zijn
   const isProfileScreen = pathname === '/profile';
 
   return (
@@ -102,8 +79,8 @@ function RootLayoutNav() {
         tabBarStyle: {
           backgroundColor: isDark ? '#222' : '#fff',
           borderTopColor: isDark ? '#444' : '#eee',
-          // Verberg de tabbar op het loginscherm en profielscherm
-          display: (isLoginScreen || isProfileScreen) ? 'none' : 'flex',
+          // Verberg de tabbar op het profielscherm
+          display: isProfileScreen ? 'none' : 'flex',
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -139,31 +116,14 @@ function RootLayoutNav() {
         }}
       />
       <Tabs.Screen
-        name="login"
+        name="profile"
         options={{
-          href: !isAuthenticated ? '/login' : null,
-          title: 'Login',
+          title: 'Profiel',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="log-in" color={color} size={size} />
+            <Ionicons name="person" color={color} size={size} />
           ),
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null, // Verberg deze uit de tabs navigatie
-          title: 'Profiel',
-        }}
-      />
     </Tabs>
-  );
-}
-
-// Hoofdcomponent met AuthProvider
-export default function AppLayout() {
-  return (
-    <AuthProvider>
-      <ProtectedRouteGuard />
-    </AuthProvider>
   );
 }
