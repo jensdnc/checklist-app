@@ -145,6 +145,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🚀 Initialiseren authenticatiestatus...');
       
       try {
+        // Toon het API endpoint voor debugging
+        console.log('🌐 API endpoint:', API_BASE_URL);
+        
         // Haal token op uit AsyncStorage
         const token = await getAccessToken();
         
@@ -154,6 +157,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (isMounted) setLoading(false);
           return;
         }
+        
+        console.log('🔑 Token gevonden, valideren...');
         
         // Voeg veiligheidsmechanisme toe om te voorkomen dat de app vastloopt
         const timeoutPromise = new Promise((_, reject) => 
@@ -174,6 +179,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   }
                 });
                 
+                console.log('📥 Sessie check status:', response.status);
+                
                 if (!response.ok) {
                   console.error('❌ Sessie fout:', response.status);
                   await clearAuthData();
@@ -181,13 +188,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
                 
                 const data = await response.json();
+                console.log('📦 Sessie data ontvangen:', JSON.stringify(data, null, 2));
                 
                 if (!isMounted) return;
                 
-                if (data.session) {
-                  console.log('✅ Geldige sessie gevonden');
-                  setSession(data.session);
+                // We accepteren ook alleen een token als geldig, zelfs als sessie/user ontbreken
+                if (token) {
+                  console.log('✅ Token is geldig');
                   
+                  // Sla sessie op als die bestaat
+                  if (data.session) {
+                    console.log('📝 Sessie opgeslagen');
+                    setSession(data.session);
+                  }
+                  
+                  // Sla gebruiker op als die bestaat
                   if (data.user) {
                     console.log('👤 Gebruiker geladen:', data.user.email);
                     setUser(data.user);
@@ -196,8 +211,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     const isUserAdmin = data.user.app_metadata?.role === 'admin';
                     setIsAdmin(isUserAdmin);
                   } else {
-                    console.log('⚠️ Geen gebruikersgegevens bij geldige sessie');
-                    await clearAuthData();
+                    // Als we alleen een token hebben maar geen gebruiker, maken we een basis gebruiker
+                    console.log('⚠️ Geen gebruikersdata maar wel geldig token, maak basis gebruiker');
+                    setUser({
+                      id: 'token-based-user',
+                      app_metadata: {},
+                      user_metadata: {}
+                    } as any);
                   }
                 } else {
                   console.log('❌ Geen geldige sessie gevonden');
@@ -240,10 +260,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Login functie via backend API
   const login = async (email: string, password: string) => {
     try {
-      console.log('🔑 Inlogpoging voor:', email);
+      console.log('🔑 Inlogpoging gestart voor:', email);
       
       // Maak schoon voordat we inloggen
       await clearAuthData();
+      
+      console.log('📡 Verbinden met backend API:', API_BASE_URL);
       
       // Login via backend API
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -254,61 +276,124 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password })
       });
       
+      console.log('📥 Backend response status:', response.status);
+      
       if (!response.ok) {
         let errorMsg = 'Inloggen mislukt. Probeer het opnieuw.';
         try {
           const errorData = await response.json();
           errorMsg = errorData.error || errorMsg;
+          console.error('❌ Server foutmelding:', errorMsg);
         } catch (e) {
-          // Negeren als we geen JSON kunnen parsen
+          console.error('❌ Kon response niet parsen:', e);
         }
         
-        console.error('❌ Login fout:', errorMsg);
         return { success: false, error: errorMsg };
       }
       
-      const data = await response.json();
+      // Probeer de server response te parsen
+      let data;
+      try {
+        data = await response.json();
+        console.log('📦 Data ontvangen:', JSON.stringify(data, null, 2));
+      } catch (e) {
+        console.error('❌ Fout bij parsen van server response:', e);
+        return { 
+          success: false, 
+          error: 'Kon serverrespons niet verwerken. Probeer het later opnieuw.'
+        };
+      }
       
-      if (data.token && data.session && data.user) {
-        console.log('✅ Login succesvol!');
+      // Debug log
+      console.log('🔍 Controle response data:');
+      console.log('  - Token aanwezig (top-level):', !!data.token);
+      console.log('  - Session.access_token aanwezig:', !!(data.session?.access_token));
+      console.log('  - Sessie aanwezig:', !!data.session);
+      console.log('  - Gebruiker aanwezig:', !!data.user);
+      
+      // Haal token uit het juiste veld (ofwel direct op data of in session.access_token)
+      const authToken = data.token || (data.session?.access_token);
+      
+      // Controleer of we de minimale vereiste gegevens hebben
+      if (authToken) {
+        console.log('✅ Token gevonden, gebruiker wordt ingelogd');
         
-        // Sla token op in AsyncStorage
-        await AsyncStorage.setItem('auth-token', data.token);
+        // Bewaar het token voor gebruik in volgende requests
+        await AsyncStorage.setItem('auth-token', authToken);
         
-        // Sla sessie en gebruiker op in state
-        setSession(data.session);
-        setUser(data.user);
+        // Als we minimaal een user of session hebben, kunnen we inloggen
+        if (data.user) {
+          setUser(data.user);
+          
+          // Controleer admin rol als metadata beschikbaar is
+          const isUserAdmin = data.user.app_metadata?.role === 'admin' || 
+                            data.user.user_metadata?.role === 'admin';
+          setIsAdmin(isUserAdmin);
+          console.log('👑 Admin rechten:', isUserAdmin ? 'JA' : 'NEE');
+        } else {
+          // Als we geen gebruiker hebben maar wel een token, kunnen we nog steeds doorgaan
+          console.warn('⚠️ Geen gebruikersdata ontvangen, maar wel token');
+          
+          // Maak een basis gebruiker aan op basis van wat we weten
+          setUser({
+            id: 'unknown',
+            email: email,
+            app_metadata: {},
+            user_metadata: {},
+          } as any);
+        }
         
-        // Controleer admin rol
-        const isUserAdmin = data.user.app_metadata?.role === 'admin';
-        setIsAdmin(isUserAdmin);
-        
-        // Navigeer naar home pagina
-        navigateToHome('Login succesvol');
+        // Sessie is niet strikt noodzakelijk, maar wel handig
+        if (data.session) {
+          setSession(data.session);
+        } else {
+          console.warn('⚠️ Geen sessie ontvangen van server');
+        }
         
         return { success: true };
       } else {
-        console.log('❌ Geen sessie of token verkregen bij login');
-        return { success: false, error: 'Kon geen sessie aanmaken. Probeer opnieuw.' };
+        console.error('❌ Geen token gevonden in de respons');
+        return { 
+          success: false, 
+          error: 'Geen toegangstoken ontvangen. Probeer opnieuw in te loggen.'
+        };
       }
     } catch (error: any) {
-      console.error('❌ Onverwachte login fout:', error);
-      return { success: false, error: 'Er is een onverwachte fout opgetreden.' };
+      // Verbindingsfout of andere onverwachte fout
+      console.error('❌ Onverwachte fout bij inloggen:', error);
+      
+      // Onderscheid tussen netwerkfouten en andere fouten
+      const isNetworkError = error.message?.includes('Network') || 
+                            error.message?.includes('network') ||
+                            error.name === 'TypeError';
+      
+      if (isNetworkError) {
+        return { 
+          success: false, 
+          error: 'Geen verbinding met de server. Controleer je internetverbinding.' 
+        };
+      }
+      
+      return { 
+        success: false, 
+        error: 'Er is een onverwachte fout opgetreden bij het inloggen.' 
+      };
     }
   };
 
-  // Logout functie via backend API
+  // Logout functie via backend en lokaal
   const logout = async () => {
     try {
-      console.log('🚪 Uitloggen...');
-      setLoading(true);
+      console.log('🚪 Uitloggen gestart...');
       
-      // Haal token op voor autorisatie
+      // Haal token op voor uitlogverzoek
       const token = await getAccessToken();
       
+      // Als we een token hebben, probeer netjes uit te loggen bij de backend
       if (token) {
-        // Logout op backend
         try {
+          console.log('📡 Uitloggen bij backend...');
+          
           const response = await fetch(`${API_BASE_URL}/auth/logout`, {
             method: 'POST',
             headers: {
@@ -317,26 +402,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           });
           
-          if (!response.ok) {
-            console.error('❌ Uitlog fout op backend:', response.status);
+          if (response.ok) {
+            console.log('👍 Succesvol uitgelogd bij backend');
           } else {
-            console.log('✅ Backend uitloggen succesvol');
+            console.warn('⚠️ Kon niet uitloggen bij backend:', response.status);
           }
         } catch (error) {
-          console.error('❌ Fout bij uitloggen op backend:', error);
+          // Als het uitloggen mislukt, gaan we toch door met lokaal uitloggen
+          console.error('⚠️ Fout bij uitloggen bij backend:', error);
         }
       }
       
-      // Verwijder alle auth data, ongeacht backend resultaat
+      // Altijd lokaal uitloggen, ongeacht of backend uitloggen is gelukt
+      console.log('🧹 Lokaal alle auth data verwijderen...');
       await clearAuthData();
       
-      // Forceer navigatie naar login
-      navigateToLogin('Uitgelogd');
+      console.log('✅ Volledig uitgelogd!');
     } catch (error) {
-      console.error('❌ Onverwachte fout bij uitloggen:', error);
-      Alert.alert('Uitloggen mislukt', 'Er is een onverwachte fout opgetreden.');
-    } finally {
-      setLoading(false);
+      console.error('❌ Fout bij uitloggen:', error);
+      
+      // Nog een laatste poging om auth data te wissen
+      try {
+        await clearAuthData();
+      } catch (e) {
+        console.error('💥 Kritieke fout bij opschonen auth data:', e);
+      }
     }
   };
 
