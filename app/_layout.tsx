@@ -2,28 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme, Text, View, ActivityIndicator } from 'react-native';
-import { usePathname, useRouter, Stack, Slot } from 'expo-router';
+import { usePathname, useRouter, Stack } from 'expo-router';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
 
-// Publieke routes die zonder inloggen toegankelijk zijn
-const publicRoutes = ['/login'];
-
-// Hoofdcomponent met AuthProvider
-export default function AppLayout() {
-  return (
-    <AuthProvider>
-      <RootLayoutComponent />
-    </AuthProvider>
-  );
-}
-
-// Root component met conditionele navigatie
-function RootLayoutComponent() {
-  // Begin altijd met een Slot renderen om de fout te voorkomen
-  return <Slot />;
-}
-
-// Beveiligde Tab Navigatie, wordt alleen gebruikt in index.tsx, etc.
+// Beveiligde Tab Navigatie hook, wordt gebruikt in tabscreens
 export function useProtectedRoute() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -33,6 +15,14 @@ export function useProtectedRoute() {
   const publicRoutes = ['/login'];
   const isPublicRoute = publicRoutes.includes(pathname);
   
+  // Debug logging
+  useEffect(() => {
+    console.log('🛡️ Route Guard - Pagina:', pathname);
+    console.log('🛡️ Route Guard - Ingelogd:', !!user);
+    console.log('🛡️ Route Guard - Laden:', loading);
+    console.log('🛡️ Route Guard - Publieke route:', isPublicRoute);
+  }, [pathname, user, loading, isPublicRoute]);
+  
   useEffect(() => {
     // Wacht tot authenticatie geladen is
     if (!loading) {
@@ -41,9 +31,27 @@ export function useProtectedRoute() {
         console.log('🔒 Toegang geweigerd tot beveiligde route:', pathname);
         
         // Gebruik een timeout om te zorgen dat navigatie gebeurt na de render cyclus
-        setTimeout(() => {
-          router.replace('/login');
-        }, 50);
+        const timer = setTimeout(() => {
+          try {
+            console.log('🧭 Doorsturen naar login pagina...');
+            router.replace('/login');
+          } catch (e) {
+            console.error('❌ Navigatie error:', e);
+            
+            // Fallback navigatie met extra vertraging
+            setTimeout(() => {
+              try {
+                console.log('🔄 Proberen opnieuw te navigeren naar login...');
+                router.push('/login');
+              } catch (e2) {
+                console.error('💥 Fallback navigatie mislukt:', e2);
+              }
+            }, 500);
+          }
+        }, 100);
+        
+        // Cleanup timer
+        return () => clearTimeout(timer);
       }
       
       // Wel ingelogd en op login pagina? -> redirect naar home
@@ -51,9 +59,27 @@ export function useProtectedRoute() {
         console.log('🏠 Al ingelogd, doorsturen naar home');
         
         // Gebruik een timeout om te zorgen dat navigatie gebeurt na de render cyclus
-        setTimeout(() => {
-          router.replace('/');
-        }, 50);
+        const timer = setTimeout(() => {
+          try {
+            console.log('🧭 Doorsturen naar home...');
+            router.replace('/');
+          } catch (e) {
+            console.error('❌ Navigatie error:', e);
+            
+            // Fallback navigatie met extra vertraging
+            setTimeout(() => {
+              try {
+                console.log('🔄 Proberen opnieuw te navigeren naar home...');
+                router.push('/');
+              } catch (e2) {
+                console.error('💥 Fallback navigatie mislukt:', e2);
+              }
+            }, 500);
+          }
+        }, 100);
+        
+        // Cleanup timer
+        return () => clearTimeout(timer);
       }
     }
   }, [user, loading, pathname, isPublicRoute]);
@@ -62,15 +88,36 @@ export function useProtectedRoute() {
   return { isLoading: loading, user, isAuthenticated: !!user };
 }
 
-// Tab navigatie component - wordt gebruikt in de individuele pagina's
-export function TabLayout() {
+// Tabs component zonder AuthProvider
+function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { user, loading } = useAuth();
   const pathname = usePathname();
   
-  // Controleer of we op het profielscherm zijn
-  const isProfileScreen = pathname === '/profile';
-
+  // Als we nog aan het laden zijn, toon laadscherm
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#43976A" />
+        <Text style={{ marginTop: 20, color: '#333' }}>App wordt geladen...</Text>
+      </View>
+    );
+  }
+  
+  // Bepaal of we alleen login of tabs moeten tonen
+  const showLogin = !user && pathname === '/login';
+  
+  // Als we naar login moeten, toon alleen login pagina
+  if (showLogin) {
+    return (
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="login" />
+      </Stack>
+    );
+  }
+  
+  // Anders toon de tabs
   return (
     <Tabs
       screenOptions={{
@@ -79,8 +126,6 @@ export function TabLayout() {
         tabBarStyle: {
           backgroundColor: isDark ? '#222' : '#fff',
           borderTopColor: isDark ? '#444' : '#eee',
-          // Verberg de tabbar op het profielscherm
-          display: isProfileScreen ? 'none' : 'flex',
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -124,6 +169,26 @@ export function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="login"
+        options={{
+          tabBarButton: () => null, // Verbergen in de tabs
+        }}
+      />
     </Tabs>
   );
 }
+
+// Root layout component met AuthProvider
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <TabsLayout />
+    </AuthProvider>
+  );
+}
+
+// Instellingen voor expo-router
+export const unstable_settings = {
+  initialRouteName: 'index',
+};

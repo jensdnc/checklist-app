@@ -5,7 +5,7 @@ import { ThemedText } from '../components/ThemedText';
 import { router } from 'expo-router';
 import AppHeader from '../components/AppHeader';
 import { QRScanner } from '../components/QRScanner';
-import { useProtectedRoute, TabLayout } from './_layout';
+import { useProtectedRoute } from './_layout';
 import { useAuth } from '../providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -16,26 +16,7 @@ export default function HomeScreen() {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   
-  // Als we nog aan het laden zijn, toon laadscherm
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#43976A" />
-        <Text style={styles.loadingText}>Inloggegevens controleren...</Text>
-      </View>
-    );
-  }
-  
-  // Als niet ingelogd, toon alleen een melding dat we omleiden
-  // De _layout.tsx zorgt voor de daadwerkelijke redirect
-  if (!isAuthenticated) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#43976A" />
-        <Text style={styles.loadingText}>Je wordt doorgestuurd naar de login pagina...</Text>
-      </View>
-    );
-  }
+  // BELANGRIJK: Alle hooks MOETEN hier gedefinieerd worden voordat er een return is
   
   // Stel de gebruikersnaam in op basis van e-mail
   useEffect(() => {
@@ -49,6 +30,7 @@ export default function HomeScreen() {
     }
   }, [user]);
 
+  // QR scanner handlers
   const handleQRPress = () => {
     setShowQRScanner(true);
   };
@@ -137,88 +119,108 @@ export default function HomeScreen() {
     router.push('/profile');
   };
   
+  // NU pas, na alle hooks, kunnen we conditionele returns doen
+  
+  // Als we nog aan het laden zijn, toon laadscherm
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#43976A" />
+        <Text style={styles.loadingText}>Inloggegevens controleren...</Text>
+      </View>
+    );
+  }
+  
+  // Als niet ingelogd, toon alleen een melding dat we omleiden
+  // De _layout.tsx zorgt voor de daadwerkelijke redirect
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#43976A" />
+        <Text style={styles.loadingText}>Je wordt doorgestuurd naar de login pagina...</Text>
+      </View>
+    );
+  }
+  
   // Hoofdinhoud van de home pagina
   return (
-    <>
-      <TabLayout />
-      <ThemedView style={styles.container}>
-        <AppHeader 
-          title="ChecklistApp" 
-          subtitle="Welkom terug"
-          leftIconName="qr-code"
-          rightIconName="person-circle"
-          onLeftIconPress={handleQRPress}
-          onRightIconPress={handleProfilePress}
-          scrollY={scrollY}
-          transparentOnTop={false}
-        />
+    <ThemedView style={styles.container}>
+      <AppHeader 
+        title="ChecklistApp" 
+        subtitle="Welkom terug"
+        leftIconName="qr-code"
+        rightIconName="person-circle"
+        onLeftIconPress={handleQRPress}
+        onRightIconPress={handleProfilePress}
+        scrollY={scrollY}
+        transparentOnTop={false}
+      />
+      
+      <QRScanner
+        isVisible={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onScan={handleQRScan}
+      />
+      
+      <Animated.ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+      >
+        <View style={styles.welcomeSection}>
+          <View style={styles.welcomeCard}>
+            <ThemedText style={styles.welcome}>Welkom, {username}!</ThemedText>
+            <ThemedText style={styles.welcomeSubtitle}>
+              Wat wil je vandaag doen?
+            </ThemedText>
+          </View>
+        </View>
         
-        <QRScanner
-          isVisible={showQRScanner}
-          onClose={() => setShowQRScanner(false)}
-          onScan={handleQRScan}
-        />
+        <View style={styles.widgetsContainer}>
+          <TouchableOpacity 
+            style={styles.widget}
+            onPress={() => router.push('/checklist')}
+          >
+            <View style={styles.widgetIcon}>
+              <Ionicons name="checkbox" size={24} color="#43976A" />
+            </View>
+            <ThemedText style={styles.widgetTitle}>Checklist</ThemedText>
+            <ThemedText style={styles.widgetSubtitle}>Beheer je taken</ThemedText>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.widget}
+            onPress={() => router.push('/gpt')}
+          >
+            <View style={styles.widgetIcon}>
+              <Ionicons name="chatbubbles" size={24} color="#4285F4" />
+            </View>
+            <ThemedText style={styles.widgetTitle}>GPT Assistent</ThemedText>
+            <ThemedText style={styles.widgetSubtitle}>Vraag hulp</ThemedText>
+          </TouchableOpacity>
+        </View>
         
-        <Animated.ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
-        >
-          <View style={styles.welcomeSection}>
-            <View style={styles.welcomeCard}>
-              <ThemedText style={styles.welcome}>Welkom, {username}!</ThemedText>
-              <ThemedText style={styles.welcomeSubtitle}>
-                Wat wil je vandaag doen?
-              </ThemedText>
+        <View style={styles.statsSection}>
+          <ThemedText style={styles.sectionTitle}>Statistieken</ThemedText>
+          <View style={styles.statsCard}>
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statValue}>12</ThemedText>
+              <ThemedText style={styles.statLabel}>Taken Voltooid</ThemedText>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statValue}>5</ThemedText>
+              <ThemedText style={styles.statLabel}>Openstaand</ThemedText>
             </View>
           </View>
-          
-          <View style={styles.widgetsContainer}>
-            <TouchableOpacity 
-              style={styles.widget}
-              onPress={() => router.push('/checklist')}
-            >
-              <View style={styles.widgetIcon}>
-                <Ionicons name="checkbox" size={24} color="#43976A" />
-              </View>
-              <ThemedText style={styles.widgetTitle}>Checklist</ThemedText>
-              <ThemedText style={styles.widgetSubtitle}>Beheer je taken</ThemedText>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.widget}
-              onPress={() => router.push('/gpt')}
-            >
-              <View style={styles.widgetIcon}>
-                <Ionicons name="chatbubbles" size={24} color="#4285F4" />
-              </View>
-              <ThemedText style={styles.widgetTitle}>GPT Assistent</ThemedText>
-              <ThemedText style={styles.widgetSubtitle}>Vraag hulp</ThemedText>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.statsSection}>
-            <ThemedText style={styles.sectionTitle}>Statistieken</ThemedText>
-            <View style={styles.statsCard}>
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statValue}>12</ThemedText>
-                <ThemedText style={styles.statLabel}>Taken Voltooid</ThemedText>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <ThemedText style={styles.statValue}>5</ThemedText>
-                <ThemedText style={styles.statLabel}>Openstaand</ThemedText>
-              </View>
-            </View>
-          </View>
-        </Animated.ScrollView>
-      </ThemedView>
-    </>
+        </View>
+      </Animated.ScrollView>
+    </ThemedView>
   );
 }
 
