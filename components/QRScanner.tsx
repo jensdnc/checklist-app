@@ -42,79 +42,26 @@ export function QRScanner({ isVisible, onClose, onScan }: QRScannerProps) {
   }, [isVisible]);
 
   const handleBarcodeScanned = ({ type, data }: { type: string; data: string }) => {
-    // Voorkom dubbele scans of scans tijdens cooldown periode
-    if (!isScanning || data === lastScanRef.current) return;
-    
-    // Markeer deze code als laatst gescand om duplicaten te voorkomen
+    // Voorkom scannen van dezelfde code meerdere keren
+    if (data === lastScanRef.current) return;
     lastScanRef.current = data;
+    
     // Zet scanning tijdelijk uit
     setIsScanning(false);
     
     console.log('QR code gescand:', data);
     
-    try {
-      // Controleer of de gescande data een URL is
-      if (data.startsWith('http')) {
-        // Probeer een URL object te maken om de URL te parsen
-        const url = new URL(data);
-        
-        // Controleer of dit een Burg Dashboard QR code URL is
-        if (url.hostname === 'api.burg-dashboard.nl' && url.pathname.includes('/scan/redirect/')) {
-          console.log('Volledige pathname parts:', url.pathname);
-          // Verkrijg type en ID uit de URL
-          const pathParts = url.pathname.split('/');
-          console.log('Path parts:', pathParts);
-          
-          // De correcte structuur is /scan/redirect/{type}/{id}
-          if (pathParts.length >= 5) {  // ["", "scan", "redirect", "hoofdobject", "123"]
-            // Index 3 is type, index 4 is id
-            const entityType = pathParts[3]; // hoofdobject, deelobject, etc.
-            const entityId = pathParts[4];   // UUID
-            
-            console.log(`Geparametriseerde URL: type=${entityType}, id=${entityId}`);
-            
-            // Sluit de scanner
-            onClose();
-            
-            // Meld de scan aan de parent component
-            onScan(data);
-            
-            // Direct naar scan detail pagina navigeren zonder alert
-            router.push({
-              pathname: '/scan/[type]/[id]',
-              params: { 
-                type: entityType, 
-                id: entityId 
-              }
-            });
-            return;
-          }
-        }
-      }
-      
-      // Voor niet-Burg Dashboard QRs, log alleen en sluit de scanner
-      console.log('Geen Burg Dashboard QR code, gescande data:', data);
-      onScan(data);
-      onClose();
-      
-      // Reset scanner na 2 seconden om nieuwe scans mogelijk te maken
-      timeoutRef.current = setTimeout(() => {
-        setIsScanning(true);
-        lastScanRef.current = '';
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Fout bij verwerken QR code:', error);
-      
-      // Sluit scanner bij fouten, geen alert tonen
-      onClose();
-      
-      // Reset scanner na 1 seconde
-      timeoutRef.current = setTimeout(() => {
-        setIsScanning(true);
-        lastScanRef.current = '';
-      }, 1000);
-    }
+    // Sluit scanner
+    onClose();
+    
+    // Stuur data naar parent component voor verdere verwerking
+    onScan(data);
+    
+    // Reset scanner na 2 seconden om nieuwe scans mogelijk te maken
+    timeoutRef.current = setTimeout(() => {
+      setIsScanning(true);
+      lastScanRef.current = '';
+    }, 2000);
   };
 
   const toggleTorch = () => {

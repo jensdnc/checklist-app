@@ -75,7 +75,12 @@ export default function ScanDetailScreen() {
       
       // API aanroep
       try {
-        const response = await fetch(endpoint);
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
         
         if (!response.ok) {
           // Extra logging voor troubleshooting

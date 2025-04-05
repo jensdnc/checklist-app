@@ -45,24 +45,15 @@ export default function SimpleLoginScreen() {
       }
 
       if (data && data.session) {
-        console.log('Login succesvol');
+        console.log('Login succesvol', data.session);
         
-        // Bewaar sessie-token in AsyncStorage
         try {
-          await AsyncStorage.setItem(
-            'authSession', 
-            JSON.stringify(data.session)
-          );
-          
-          // Gebruik setTimeout om navigatie uit te stellen
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
-        } catch (storageError) {
-          console.error('Fout bij opslaan van sessie:', storageError);
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
+          // Direct naar index navigeren zonder timeouts of extra stappen
+          router.replace('/');
+        } catch (navError) {
+          console.error('Navigatie fout:', navError);
+          // Als navigatie mislukt, probeer opnieuw zonder extra logica
+          router.push('/');
         }
       }
     } catch (error: any) {

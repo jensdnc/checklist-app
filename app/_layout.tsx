@@ -45,23 +45,20 @@ export default function AppLayout() {
           setIsAuthenticated(true);
           
           // Bij inloggen, zorg ervoor dat we de gebruiker doorsturen
-          if (event === 'SIGNED_IN' && isReady) {
+          if (event === 'SIGNED_IN') {
             console.log('Zojuist ingelogd, navigeren naar home');
-            // Gebruik setTimeout om navigatie uit te stellen
-            setTimeout(() => {
+            if (pathname === '/login') {
               router.replace('/');
-            }, 100);
+            }
           }
         } else {
           console.log('Gebruiker is niet ingelogd');
           setIsAuthenticated(false);
           
           // Bij uitloggen, terug naar login scherm
-          if (event === 'SIGNED_OUT' && isReady) {
+          if (event === 'SIGNED_OUT') {
             console.log('Zojuist uitgelogd, navigeren naar login');
-            setTimeout(() => {
-              router.replace('/login');
-            }, 100);
+            router.replace('/login');
           }
         }
       }
@@ -85,32 +82,32 @@ export default function AppLayout() {
         console.error('Sessie fout:', error.message);
         setIsAuthenticated(false);
         setIsReady(true);
+        
+        // Als er een fout is en niet op login pagina, stuur door naar login
+        if (pathname !== '/login') {
+          console.log('Sessie fout, doorsturen naar login');
+          router.replace('/login');
+        }
         return;
       }
       
       if (data.session) {
-        console.log('Geldige sessie gevonden');
+        console.log('Geldige sessie gevonden', data.session);
         setIsAuthenticated(true);
         
         // Als de gebruiker op login pagina is maar is ingelogd, stuur direct door naar home
-        // Voer dit alleen uit als isReady true is
-        if (pathname === '/login' && isReady) {
+        if (pathname === '/login') {
           console.log('Gebruiker is ingelogd maar op loginpagina, doorsturen naar home');
-          setTimeout(() => {
-            router.replace('/');
-          }, 100);
+          router.replace('/');
         }
       } else {
         console.log('Geen geldige sessie gevonden');
         setIsAuthenticated(false);
         
         // Als gebruiker niet is ingelogd en niet op login pagina is, stuur door naar login
-        // Voer dit alleen uit als isReady true is en pathname een waarde heeft
-        if (pathname !== '/login' && pathname !== undefined && isReady) {
+        if (pathname !== '/login' && pathname !== undefined) {
           console.log('Gebruiker niet ingelogd, doorsturen naar login');
-          setTimeout(() => {
-            router.replace('/login');
-          }, 100);
+          router.replace('/login');
         }
       }
       
@@ -120,6 +117,10 @@ export default function AppLayout() {
       console.error('Auth error details:', error);
       setIsAuthenticated(false);
       setIsReady(true);
+      // Bij een fout in auth, stuur terug naar login
+      if (pathname !== '/login') {
+        router.replace('/login');
+      }
     }
   };
 

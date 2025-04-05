@@ -84,12 +84,42 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               setLoading(true);
+              
+              // Supabase sessie volledig opschonen
+              try {
+                // Alle Supabase items uit AsyncStorage verwijderen
+                const keys = await AsyncStorage.getAllKeys();
+                const supabaseKeys = keys.filter(key => 
+                  key.startsWith('supabase.') || 
+                  key.includes('auth') || 
+                  key === 'authSession'
+                );
+                
+                console.log('Te verwijderen auth keys:', supabaseKeys);
+                if (supabaseKeys.length > 0) {
+                  await AsyncStorage.multiRemove(supabaseKeys);
+                }
+                
+                console.log('Alle auth storage opgeschoond');
+              } catch (storageError) {
+                console.warn('Fout bij opschonen storage:', storageError);
+                // Doorgaan met uitloggen, zelfs als opschonen van storage mislukt
+              }
+              
+              // Nu uitloggen bij Supabase
               const { error } = await supabase.auth.signOut();
               if (error) throw error;
               
-              // Na uitloggen naar login pagina
               console.log('Succesvol uitgelogd');
+              
+              // Force navigatie naar login
               router.replace('/login');
+              
+              // Refresh de app na korte tijd
+              setTimeout(() => {
+                // Dit zal de hele app state opnieuw initialiseren
+                router.replace('/login');
+              }, 300);
             } catch (error: any) {
               console.error('Uitlogfout:', error.message);
               Alert.alert('Fout bij uitloggen', error.message);

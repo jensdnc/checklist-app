@@ -69,61 +69,80 @@ export default function HomeScreen() {
   };
 
   const handleQRScan = (data: string) => {
-    console.log('QR code gescand:', data);
-    
     try {
-      // Check of het een geldig URL formaat is voor onze QR codes
-      const url = new URL(data);
+      console.log('QR code gescand, data:', data);
       
-      // Controleer of het een bekende scan URL is
-      if (url.pathname.startsWith('/scan/')) {
-        // Haal type en ID uit de URL
-        const parts = url.pathname.split('/');
-        if (parts.length >= 4) {
-          const type = parts[2];
-          const id = parts[3];
-          
-          // Navigeer naar het juiste scan detail scherm
-          router.push(`/scan/${type}/${id}`);
-          return;
-        }
-      }
-      
-      // Voor oudere QR codes of andere URL formaten
-      // Probeer redirect URL
-      if (data.includes('/scan/redirect/')) {
-        const parts = data.split('/');
-        const typeIndex = parts.indexOf('redirect') + 1;
+      // Controleer of de gescande data een URL is
+      if (data.startsWith('http')) {
+        const url = new URL(data);
+        console.log('URL parsed:', url.hostname, url.pathname);
         
-        if (typeIndex > 0 && typeIndex + 1 < parts.length) {
-          const type = parts[typeIndex];
-          const id = parts[typeIndex + 1];
+        // Ondersteun beide domeinen
+        if (url.hostname === 'app.burg-dashboard.nl' || url.hostname === 'api.burg-dashboard.nl' || url.hostname === 'burg-dashboard.nl') {
+          // Ondersteun zowel oude '/scan/redirect/[type]/[id]' als nieuwe '/scan/[type]/[id]' formaten
+          let pathParts = url.pathname.split('/').filter(part => part.length > 0);
+          console.log('Path parts:', pathParts);
           
-          router.push(`/scan/${type}/${id}`);
-          return;
-        }
-      }
-      
-      // Fallback: open de URL in een browser als het geen specifiek scan format is
-      Alert.alert(
-        'Externe link',
-        'De gescande QR code leidt naar een externe website. Wil je deze openen?',
-        [
-          { 
-            text: 'Annuleren', 
-            style: 'cancel' 
-          },
-          { 
-            text: 'Openen', 
-            onPress: () => Linking.openURL(data)
+          // Controleer of dit een scan URL is
+          if (pathParts[0] === 'scan') {
+            let type, id;
+            
+            if (pathParts[1] === 'redirect' && pathParts.length >= 4) {
+              // Oud formaat: /scan/redirect/[type]/[id]
+              type = pathParts[2];
+              id = pathParts[3];
+            } else if (pathParts.length >= 3) {
+              // Nieuw formaat: /scan/[type]/[id]
+              type = pathParts[1];
+              id = pathParts[2];
+            }
+            
+            if (type && id) {
+              console.log(`Navigeren naar scan/${type}/${id}`);
+              
+              // Belangrijk: gebruik setTimeout om te zorgen dat router.push pas wordt uitgevoerd
+              // nadat de QR scanner is gesloten (voorkomt navigatieproblemen)
+              setTimeout(() => {
+                router.push({
+                  pathname: '/scan/[type]/[id]',
+                  params: { type, id }
+                });
+              }, 300);
+              
+              return;
+            }
           }
-        ]
-      );
+        }
+        
+        // Fallback: open de URL in een browser als het geen specifiek scan format is
+        Alert.alert(
+          'Externe link',
+          'De gescande QR code leidt naar een externe website. Wil je deze openen?',
+          [
+            { 
+              text: 'Annuleren', 
+              style: 'cancel' 
+            },
+            { 
+              text: 'Openen', 
+              onPress: () => Linking.openURL(data)
+            }
+          ]
+        );
+      } else {
+        // Als het geen URL is, toon de raw data
+        Alert.alert(
+          'QR Code Inhoud',
+          `De volgende QR code is gescand: ${data}`,
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
-      // Als het geen URL is, toon de raw data
+      console.error('Fout bij verwerken QR code:', error);
+      // Bij fouten, toon een algemene melding
       Alert.alert(
-        'QR Code Inhoud',
-        `De volgende QR code is gescand: ${data}`,
+        'Fout bij QR code',
+        `Er is een fout opgetreden bij het verwerken van de QR code: ${error}`,
         [{ text: 'OK' }]
       );
     }
