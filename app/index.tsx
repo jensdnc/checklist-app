@@ -1,33 +1,20 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Platform, Animated, Alert, Linking, Text, ActivityIndicator } from 'react-native';
 import { ThemedView } from '../components/ThemedView';
 import { ThemedText } from '../components/ThemedText';
+import { router } from 'expo-router';
 import AppHeader from '../components/AppHeader';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Link, router } from 'expo-router';
-import { createClient } from '@supabase/supabase-js';
-import { User } from '@supabase/supabase-js';
 import { QRScanner } from '../components/QRScanner';
 import { useProtectedRoute, TabLayout } from './_layout';
 import { useAuth } from '../providers/AuthProvider';
-
-// Supabase configuratie (dezelfde als in login.tsx)
-const supabaseUrl = 'https://vtyvgtgehayxexwgzerp.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eXZndGdlaGF5eGV4d2d6ZXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyODU2NTcsImV4cCI6MjA1Nzg2MTY1N30.prrEEjOmufQJ1yrXBDIYXtIIoemFKwyYglFABxTF5tU';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   // Gebruik de protected route hook om te controleren of gebruiker is ingelogd
   const { isLoading, user, isAuthenticated } = useProtectedRoute();
+  const [username, setUsername] = useState<string>('Gebruiker');
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
   
   // Als we nog aan het laden zijn, toon laadscherm
   if (isLoading) {
@@ -50,39 +37,187 @@ export default function HomeScreen() {
     );
   }
   
+  // Stel de gebruikersnaam in op basis van e-mail
+  useEffect(() => {
+    if (user?.email) {
+      // Gebruik de naam uit het e-mailadres (alles voor de @)
+      const email = user.email || '';
+      const nameFromEmail = email.split('@')[0];
+      // Maak eerste letter hoofdletter
+      const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+      setUsername(formattedName);
+    }
+  }, [user]);
+
+  const handleQRPress = () => {
+    setShowQRScanner(true);
+  };
+
+  const handleQRScan = (data: string) => {
+    try {
+      console.log('QR code gescand, data:', data);
+      
+      // Controleer of de gescande data een URL is
+      if (data.startsWith('http')) {
+        const url = new URL(data);
+        console.log('URL parsed:', url.hostname, url.pathname);
+        
+        // Ondersteun beide domeinen
+        if (url.hostname === 'app.burg-dashboard.nl' || url.hostname === 'api.burg-dashboard.nl' || url.hostname === 'burg-dashboard.nl') {
+          // Ondersteun zowel oude '/scan/redirect/[type]/[id]' als nieuwe '/scan/[type]/[id]' formaten
+          let pathParts = url.pathname.split('/').filter(part => part.length > 0);
+          console.log('Path parts:', pathParts);
+          
+          // Controleer of dit een scan URL is
+          if (pathParts[0] === 'scan') {
+            let type, id;
+            
+            if (pathParts[1] === 'redirect' && pathParts.length >= 4) {
+              // Oud formaat: /scan/redirect/[type]/[id]
+              type = pathParts[2];
+              id = pathParts[3];
+            } else if (pathParts.length >= 3) {
+              // Nieuw formaat: /scan/[type]/[id]
+              type = pathParts[1];
+              id = pathParts[2];
+            }
+            
+            if (type && id) {
+              console.log(`Navigeren naar scan/${type}/${id}`);
+              
+              // Belangrijk: gebruik setTimeout om te zorgen dat router.push pas wordt uitgevoerd
+              // nadat de QR scanner is gesloten (voorkomt navigatieproblemen)
+              setTimeout(() => {
+                router.push({
+                  pathname: '/scan/[type]/[id]',
+                  params: { type, id }
+                });
+              }, 300);
+              
+              return;
+            }
+          }
+        }
+        
+        // Fallback: open de URL in een browser als het geen specifiek scan format is
+        Alert.alert(
+          'Externe link',
+          'De gescande QR code leidt naar een externe website. Wil je deze openen?',
+          [
+            { 
+              text: 'Annuleren', 
+              style: 'cancel' 
+            },
+            { 
+              text: 'Openen', 
+              onPress: () => Linking.openURL(data)
+            }
+          ]
+        );
+      } else {
+        // Als het geen URL is, toon de raw data
+        Alert.alert(
+          'QR Code Inhoud',
+          `De volgende QR code is gescand: ${data}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Fout bij verwerken QR code:', error);
+      // Bij fouten, toon een algemene melding
+      Alert.alert(
+        'Fout bij QR code',
+        `Er is een fout opgetreden bij het verwerken van de QR code: ${error}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleProfilePress = () => {
+    router.push('/profile');
+  };
+  
   // Hoofdinhoud van de home pagina
   return (
     <>
       <TabLayout />
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Welkom bij ChecklistApp</Text>
-          <Text style={styles.headerSubtitle}>
-            Hallo, {user?.email?.split('@')[0] || 'gebruiker'}
-          </Text>
-        </View>
+      <ThemedView style={styles.container}>
+        <AppHeader 
+          title="ChecklistApp" 
+          subtitle="Welkom terug"
+          leftIconName="qr-code"
+          rightIconName="person-circle"
+          onLeftIconPress={handleQRPress}
+          onRightIconPress={handleProfilePress}
+          scrollY={scrollY}
+          transparentOnTop={false}
+        />
         
-        <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>Snel aan de slag</Text>
-          <Text style={styles.infoCardText}>
-            Gebruik de tabs onderaan om tussen de verschillende functies te navigeren.
-          </Text>
-        </View>
+        <QRScanner
+          isVisible={showQRScanner}
+          onClose={() => setShowQRScanner(false)}
+          onScan={handleQRScan}
+        />
         
-        <View style={styles.menuCards}>
-          <TouchableOpacity style={styles.menuCard}>
-            <Ionicons name="checkbox" size={24} color="#43976A" />
-            <Text style={styles.menuCardTitle}>Checklists</Text>
-            <Text style={styles.menuCardText}>Bekijk en voltooi je checklists</Text>
-          </TouchableOpacity>
+        <Animated.ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+        >
+          <View style={styles.welcomeSection}>
+            <View style={styles.welcomeCard}>
+              <ThemedText style={styles.welcome}>Welkom, {username}!</ThemedText>
+              <ThemedText style={styles.welcomeSubtitle}>
+                Wat wil je vandaag doen?
+              </ThemedText>
+            </View>
+          </View>
           
-          <TouchableOpacity style={styles.menuCard}>
-            <Ionicons name="chatbubble-ellipses" size={24} color="#43976A" />
-            <Text style={styles.menuCardTitle}>GPT-assistent</Text>
-            <Text style={styles.menuCardText}>Stel vragen over procedures</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          <View style={styles.widgetsContainer}>
+            <TouchableOpacity 
+              style={styles.widget}
+              onPress={() => router.push('/checklist')}
+            >
+              <View style={styles.widgetIcon}>
+                <Ionicons name="checkbox" size={24} color="#43976A" />
+              </View>
+              <ThemedText style={styles.widgetTitle}>Checklist</ThemedText>
+              <ThemedText style={styles.widgetSubtitle}>Beheer je taken</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.widget}
+              onPress={() => router.push('/gpt')}
+            >
+              <View style={styles.widgetIcon}>
+                <Ionicons name="chatbubbles" size={24} color="#4285F4" />
+              </View>
+              <ThemedText style={styles.widgetTitle}>GPT Assistent</ThemedText>
+              <ThemedText style={styles.widgetSubtitle}>Vraag hulp</ThemedText>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.statsSection}>
+            <ThemedText style={styles.sectionTitle}>Statistieken</ThemedText>
+            <View style={styles.statsCard}>
+              <View style={styles.statItem}>
+                <ThemedText style={styles.statValue}>12</ThemedText>
+                <ThemedText style={styles.statLabel}>Taken Voltooid</ThemedText>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <ThemedText style={styles.statValue}>5</ThemedText>
+                <ThemedText style={styles.statLabel}>Openstaand</ThemedText>
+              </View>
+            </View>
+          </View>
+        </Animated.ScrollView>
+      </ThemedView>
     </>
   );
 }
@@ -100,71 +235,111 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   container: {
-    flex: 1, 
-    backgroundColor: '#f5f5f5',
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  welcomeSection: {
+    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingBottom: 30,
+    zIndex: 10,
+  },
+  welcomeCard: {
+    backgroundColor: '#43976A',
+    borderRadius: 16,
     padding: 20,
-  },
-  header: {
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 5,
-  },
-  infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  infoCardTitle: {
-    fontSize: 18,
+  welcome: {
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
+    color: 'white',
   },
-  infoCardText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+  welcomeSubtitle: {
+    fontSize: 16,
+    marginTop: 8,
+    color: 'rgba(255, 255, 255, 0.9)',
   },
-  menuCards: {
+  widgetsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
-  menuCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
+  widget: {
     width: '48%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-    alignItems: 'center',
   },
-  menuCardTitle: {
+  widgetIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  widgetTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginTop: 10,
     marginBottom: 5,
-    color: '#333',
   },
-  menuCardText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
+  widgetSubtitle: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  statsSection: {
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  statsCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  statLabel: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    marginHorizontal: 10,
   },
 }); 
