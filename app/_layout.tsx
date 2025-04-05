@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Text, View, ActivityIndicator } from 'react-native';
 import { usePathname, useRouter, Slot } from 'expo-router';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
 
@@ -10,6 +10,11 @@ function ProtectedRouteGuard() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const [redirecting, setRedirecting] = useState(false);
+  
+  console.log('🛡️ Route Guard - Huidige pagina:', pathname);
+  console.log('🛡️ Route Guard - Ingelogd:', !!user);
+  console.log('🛡️ Route Guard - Laden:', loading);
   
   // Bepaal welke routes toegankelijk zijn zonder inloggen
   const isPublicRoute = pathname === '/login';
@@ -17,6 +22,9 @@ function ProtectedRouteGuard() {
   // Effect om te controleren of gebruiker naar login moet worden gestuurd
   useEffect(() => {
     const checkAuth = async () => {
+      // Voorkom dubbele redirects
+      if (redirecting) return;
+      
       // Alleen uitvoeren als de authenticatie status bekend is (niet loading)
       if (!loading) {
         // Als gebruiker niet is ingelogd EN niet op een publieke route is
@@ -24,28 +32,52 @@ function ProtectedRouteGuard() {
           console.log('🔒 Niet-ingelogde gebruiker probeert beveiligde route te openen:', pathname);
           console.log('🔒 Doorsturen naar login...');
           
-          // Direct doorsturen naar login pagina
-          router.replace('/login');
+          setRedirecting(true);
+          
+          try {
+            // Direct doorsturen naar login pagina
+            await router.replace('/login');
+          } catch (e) {
+            console.error('⚠️ Navigatiefout bij doorsturen naar login:', e);
+            // Fallback navigatie in geval van fouten
+            setTimeout(() => {
+              router.push('/login');
+            }, 100);
+          }
+          
+          // Reset redirecting na een korte delay
+          setTimeout(() => {
+            setRedirecting(false);
+          }, 500);
         }
       }
     };
     
     checkAuth();
-  }, [user, loading, pathname, isPublicRoute]);
+  }, [user, loading, pathname, isPublicRoute, redirecting]);
   
-  // Toon niets tijdens het laden
+  // Als we nog bezig zijn met laden, toon een laadscherm
   if (loading) {
-    return <Slot />;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#43976A" />
+        <Text style={{ marginTop: 20, color: '#333' }}>App wordt geladen...</Text>
+      </View>
+    );
   }
   
-  // Als de gebruiker niet is ingelogd en dit geen publieke route is,
-  // toon alleen een leeg scherm terwijl we omgeleid worden
-  if (!user && !isPublicRoute) {
-    return null; // Toon niets, omdat we omgeleid worden naar login
+  // Als gebruiker op login pagina is en niet ingelogd, of gebruiker is ingelogd, render normaal
+  if ((isPublicRoute && !user) || user) {
+    return <RootLayoutNav />;
   }
   
-  // Anders, toon de normale layout
-  return <RootLayoutNav />;
+  // In alle andere gevallen, toon een eenvoudig laadscherm terwijl we doorsturen naar login
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <ActivityIndicator size="large" color="#43976A" />
+      <Text style={{ marginTop: 20, color: '#333' }}>Doorsturen naar login...</Text>
+    </View>
+  );
 }
 
 // Layout wrapper component met tabs
@@ -61,11 +93,6 @@ function RootLayoutNav() {
   // Controleer of we op het loginscherm of profielscherm zijn
   const isLoginScreen = pathname === '/login';
   const isProfileScreen = pathname === '/profile';
-
-  // Toon niets tijdens het laden van de authenticatiestatus
-  if (loading) {
-    return <Slot />;
-  }
 
   return (
     <Tabs

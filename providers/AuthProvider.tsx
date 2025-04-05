@@ -136,81 +136,105 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialiseer auth state bij opstarten
   useEffect(() => {
+    let isMounted = true;
+    
     const initializeAuth = async () => {
+      if (!isMounted) return;
+      
       setLoading(true);
+      console.log('🚀 Initialiseren authenticatiestatus...');
+      
       try {
-        console.log('🚀 Initialiseren authenticatiestatus...');
-        
         // Haal token op uit AsyncStorage
         const token = await getAccessToken();
         
         if (!token) {
           console.log('❌ Geen token gevonden bij opstarten');
           await clearAuthData();
-          setLoading(false);
+          if (isMounted) setLoading(false);
           return;
         }
         
-        // Controleer token geldigheid via backend
+        // Voeg veiligheidsmechanisme toe om te voorkomen dat de app vastloopt
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout bij sessiecontrole')), 10000)
+        );
+        
         try {
-          const response = await fetch(`${API_BASE_URL}/auth/session`, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (!response.ok) {
-            console.error('❌ Sessie fout:', response.status);
-            await clearAuthData();
-            setLoading(false);
-            return;
-          }
-          
-          const data = await response.json();
-          
-          if (data.session) {
-            console.log('✅ Geldige sessie gevonden');
-            setSession(data.session);
-            
-            if (data.user) {
-              console.log('👤 Gebruiker geladen:', data.user.email);
-              setUser(data.user);
-              
-              // Controleer admin rol
-              const isUserAdmin = data.user.app_metadata?.role === 'admin';
-              setIsAdmin(isUserAdmin);
-            } else {
-              console.log('⚠️ Geen gebruikersgegevens bij geldige sessie');
-              await clearAuthData();
-            }
-          } else {
-            console.log('❌ Geen geldige sessie gevonden');
-            await clearAuthData();
-          }
-        } catch (fetchError) {
-          console.error('❌ Netwerkfout bij sessiecontrole:', fetchError);
-          // Bij netwerkfouten laten we de gebruiker door, maar proberen we opnieuw te laden
-          // Dit is handig wanneer een gebruiker offline is of de server tijdelijk niet bereikbaar is
-          console.log('⚠️ Netwerkfout - zal later opnieuw proberen te verbinden');
-          setLoading(false);
+          // Gebruik Promise.race om timeout te implementeren
+          await Promise.race([
+            (async () => {
+              // Controleer token geldigheid via backend
+              try {
+                const response = await fetch(`${API_BASE_URL}/auth/session`, {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (!response.ok) {
+                  console.error('❌ Sessie fout:', response.status);
+                  await clearAuthData();
+                  return;
+                }
+                
+                const data = await response.json();
+                
+                if (!isMounted) return;
+                
+                if (data.session) {
+                  console.log('✅ Geldige sessie gevonden');
+                  setSession(data.session);
+                  
+                  if (data.user) {
+                    console.log('👤 Gebruiker geladen:', data.user.email);
+                    setUser(data.user);
+                    
+                    // Controleer admin rol
+                    const isUserAdmin = data.user.app_metadata?.role === 'admin';
+                    setIsAdmin(isUserAdmin);
+                  } else {
+                    console.log('⚠️ Geen gebruikersgegevens bij geldige sessie');
+                    await clearAuthData();
+                  }
+                } else {
+                  console.log('❌ Geen geldige sessie gevonden');
+                  await clearAuthData();
+                }
+              } catch (fetchError) {
+                throw fetchError; // Gooi door naar de catch buiten Promise.race
+              }
+            })(),
+            timeoutPromise
+          ]);
+        } catch (raceError: any) {
+          console.error('❌ Fout bij sessiecontrole:', raceError.message);
+          console.log('⚠️ Sessiecontrole mislukt - ga door zonder sessie');
+          await clearAuthData();
           
           // Probeer na een tijdje opnieuw te verbinden
-          setTimeout(() => {
-            refreshUser();
-          }, 5000);
-          return;
+          if (isMounted) {
+            setTimeout(() => {
+              refreshUser();
+            }, 5000);
+          }
         }
       } catch (error) {
         console.error('❌ Onverwachte fout bij initialisatie:', error);
         await clearAuthData();
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
     
     initializeAuth();
+    
+    // Cleanup functie om memory leaks te voorkomen
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Login functie via backend API
