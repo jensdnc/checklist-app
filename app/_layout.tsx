@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { Tabs } from 'expo-router';
+import React, { useEffect } from 'react';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme, Text, View, ActivityIndicator } from 'react-native';
-import { usePathname, useRouter, Stack } from 'expo-router';
+import { useColorScheme, View, Text, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Beveiligde Tab Navigatie hook, wordt gebruikt in tabscreens
+// Beveiligde navigatie hook
 export function useProtectedRoute() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -88,12 +88,75 @@ export function useProtectedRoute() {
   return { isLoading: loading, user, isAuthenticated: !!user };
 }
 
+// Custom TabBar die we volledig zelf beheren
+function CustomTabBar() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
+  
+  // Definieer alleen de drie tabRoutes die we willen tonen
+  const tabs = [
+    { name: 'index', title: 'Home', icon: 'home' },
+    { name: 'checklist', title: 'Checklist', icon: 'checkbox' },
+    { name: 'gpt', title: 'GPT', icon: 'chatbubble-ellipses' }
+  ];
+  
+  return (
+    <View style={{
+      flexDirection: 'row',
+      height: 60 + (Platform.OS === 'ios' ? insets.bottom : 0),
+      paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0,
+      backgroundColor: isDark ? '#222' : '#fff',
+      borderTopWidth: 1,
+      borderTopColor: isDark ? '#444' : '#eee',
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+    }}>
+      {tabs.map((tab) => {
+        const isActive = pathname === `/${tab.name}` || 
+                         (tab.name === 'index' && pathname === '/');
+        
+        return (
+          <Pressable
+            key={tab.name}
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingBottom: 4,
+            }}
+            onPress={() => {
+              const route = tab.name === 'index' ? '/' : `/${tab.name}`;
+              router.replace(route as any);
+            }}
+          >
+            <Ionicons 
+              name={tab.icon as any} 
+              size={24} 
+              color={isActive ? '#43976A' : isDark ? '#aaa' : '#888'} 
+            />
+            <Text style={{ 
+              fontSize: 12, 
+              color: isActive ? '#43976A' : isDark ? '#aaa' : '#888',
+              marginTop: 2,
+            }}>
+              {tab.title}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // Inner component die de auth state gebruikt
 function AppNavigator() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   
   // Als we nog aan het laden zijn, toon laadscherm
   if (loading) {
@@ -105,7 +168,7 @@ function AppNavigator() {
     );
   }
   
-  // Als niet ingelogd, toon login stack
+  // Als niet ingelogd, toon login stack zonder tabbar
   if (!user) {
     return (
       <Stack screenOptions={{ headerShown: false }}>
@@ -114,82 +177,43 @@ function AppNavigator() {
     );
   }
   
-  // Anders toon de tabs (met verborgen tabs voor niet-zichtbare routes)
+  // Bepaal of we de tabbar moeten tonen (alleen voor hoofdpagina's)
+  const isMainRoute = ['/', '/index', '/checklist', '/gpt'].includes(pathname);
+  
+  // Krijg de huidige route (zonder slash)
+  const currentRoute = pathname.startsWith('/') ? pathname.substring(1) : pathname;
+  const currentScreen = currentRoute || 'index';
+  
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#43976A',
-        tabBarInactiveTintColor: isDark ? '#aaa' : '#888',
-        tabBarStyle: {
-          backgroundColor: isDark ? '#222' : '#fff',
-          borderTopColor: isDark ? '#444' : '#eee',
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-        },
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" color={color} size={size} />
-          ),
+    <View style={{ flex: 1 }}>
+      <Stack 
+        screenOptions={{ 
+          headerShown: false,
+          // Schakel animaties uit voor tab navigatie
+          animation: isMainRoute ? 'none' : 'default'
         }}
-      />
-      <Tabs.Screen
-        name="checklist"
-        options={{
-          title: 'Checklist',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkbox" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="gpt"
-        options={{
-          title: 'GPT',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-ellipses" color={color} size={size} />
-          ),
-        }}
-      />
+      >
+        <Stack.Screen 
+          name="index" 
+          options={{ animation: 'none' }}
+        />
+        <Stack.Screen 
+          name="checklist" 
+          options={{ animation: 'none' }}
+        />
+        <Stack.Screen 
+          name="gpt" 
+          options={{ animation: 'none' }}
+        />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="scan" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="+not-found" />
+      </Stack>
       
-      {/* Verborgen tabs - niet zichtbaar in de tab bar */}
-      <Tabs.Screen
-        name="(tabs)"
-        options={{
-          tabBarButton: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="login"
-        options={{
-          tabBarButton: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          tabBarButton: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          tabBarButton: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="+not-found"
-        options={{
-          tabBarButton: () => null,
-        }}
-      />
-    </Tabs>
+      {/* Alleen tonen als we op een hoofdroute zijn */}
+      {isMainRoute && <CustomTabBar />}
+    </View>
   );
 }
 
