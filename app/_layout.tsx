@@ -88,12 +88,12 @@ export function useProtectedRoute() {
   return { isLoading: loading, user, isAuthenticated: !!user };
 }
 
-// Tabs component zonder AuthProvider
-function TabsLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+// Inner component die de auth state gebruikt
+function AppNavigator() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   
   // Als we nog aan het laden zijn, toon laadscherm
   if (loading) {
@@ -105,11 +105,8 @@ function TabsLayout() {
     );
   }
   
-  // Bepaal of we alleen login of tabs moeten tonen
-  const showLogin = !user && pathname === '/login';
-  
-  // Als we naar login moeten, toon alleen login pagina
-  if (showLogin) {
+  // Als niet ingelogd, toon login stack
+  if (!user) {
     return (
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="login" />
@@ -117,11 +114,11 @@ function TabsLayout() {
     );
   }
   
-  // Anders toon de tabs
+  // Anders toon de tabs (met verborgen tabs voor niet-zichtbare routes)
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#43976A', // Aangepast naar groen
+        tabBarActiveTintColor: '#43976A',
         tabBarInactiveTintColor: isDark ? '#aaa' : '#888',
         tabBarStyle: {
           backgroundColor: isDark ? '#222' : '#fff',
@@ -160,19 +157,41 @@ function TabsLayout() {
           ),
         }}
       />
+      
+      {/* Verborgen tabs - niet zichtbaar in de tab bar */}
       <Tabs.Screen
-        name="profile"
+        name="(tabs)"
         options={{
-          title: 'Profiel',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" color={color} size={size} />
-          ),
+          href: null,
+          tabBarButton: () => null,
         }}
       />
       <Tabs.Screen
         name="login"
         options={{
-          tabBarButton: () => null, // Verbergen in de tabs
+          href: null,
+          tabBarButton: () => null,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          href: null,
+          tabBarButton: () => null,
+        }}
+      />
+      <Tabs.Screen
+        name="scan"
+        options={{
+          href: null,
+          tabBarButton: () => null,
+        }}
+      />
+      <Tabs.Screen
+        name="+not-found"
+        options={{
+          href: null,
+          tabBarButton: () => null,
         }}
       />
     </Tabs>
@@ -181,9 +200,10 @@ function TabsLayout() {
 
 // Root layout component met AuthProvider
 export default function RootLayout() {
+  // EERST AuthProvider aanbieden, dan pas hooks gebruiken
   return (
     <AuthProvider>
-      <TabsLayout />
+      <AppNavigator />
     </AuthProvider>
   );
 }
