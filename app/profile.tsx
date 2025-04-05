@@ -1,245 +1,98 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { ThemedView } from '../components/ThemedView';
 import { ThemedText } from '../components/ThemedText';
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import { createClient } from '@supabase/supabase-js';
-import AppHeader from '../components/AppHeader';
-
-// Supabase configuratie (dezelfde als in andere bestanden)
-const supabaseUrl = 'https://vtyvgtgehayxexwgzerp.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eXZndGdlaGF5eGV4d2d6ZXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyODU2NTcsImV4cCI6MjA1Nzg2MTY1N30.prrEEjOmufQJ1yrXBDIYXtIIoemFKwyYglFABxTF5tU';
-
-// Functie om een nieuwe Supabase client te maken
-const createSupabaseClient = () => {
-  // Voor elk gebruik een verse client
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      storage: AsyncStorage,
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: false,
-    },
-  });
-};
-
-// Gebruik een functie die altijd een nieuwe client geeft
-// Verminder zo problemen met oude/corrupte state
-const getSupabase = () => {
-  return createSupabaseClient();
-};
-
-// Interface voor gebruikersgegevens
-interface UserProfile {
-  email: string;
-  username: string;
-  avatar_url?: string;
-  created_at: string;
-}
+import { useAuth } from '../providers/AuthProvider';
 
 export default function ProfileScreen() {
-  const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Gebruik de auth context
+  const { user, logout, isAdmin } = useAuth();
 
-  useEffect(() => {
-    // Haal gebruikersgegevens op bij het laden van het scherm
-    fetchUserProfile();
-  }, []);
-
-  const fetchUserProfile = async () => {
+  // Functie om uit te loggen
+  const handleLogout = async () => {
     try {
-      setLoading(true);
-      const supabase = getSupabase();
-      const { data: { user }, error } = await supabase.auth.getUser();
+      setIsLoading(true);
+      console.log('🚪 Uitloggen gestart...');
       
-      if (error) {
-        throw error;
-      }
-
-      if (user) {
-        // Basisgegevens ophalen uit de auth user
-        const userMetadata = user.user_metadata;
-        const email = user.email || '';
-        const nameFromEmail = email.split('@')[0];
-        const username = (userMetadata && userMetadata.name) ? 
-                         userMetadata.name : 
-                         nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-        
-        setUserProfile({
-          email: email,
-          username: username,
-          created_at: new Date(user.created_at).toLocaleDateString('nl-NL'),
-        });
-      }
-    } catch (error: any) {
-      console.error('Fout bij ophalen profiel:', error.message);
-      Alert.alert('Fout', 'Er is een fout opgetreden bij het ophalen van je profiel');
+      // Gebruik de logout functie uit de AuthProvider
+      await logout();
+      
+      // De navigatie gebeurt automatisch in de AuthProvider
+    } catch (error) {
+      console.error('❌ Fout bij uitloggen:', error);
+      Alert.alert('Uitloggen mislukt', 'Er is een probleem opgetreden bij het uitloggen. Probeer het opnieuw.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  // Complete uitlogfunctie die alle auth data opschoont
-  const completeSignOut = async () => {
+  // Debug-functie om authenticatie-gerelateerde opslag te bekijken
+  const showAuthDebug = async () => {
     try {
-      setLoading(true);
-      console.log('🔄 Volledige uitlog procedure gestart...');
+      console.log('===== DEBUG AUTH KEYS =====');
+      const allKeys = await AsyncStorage.getAllKeys();
+      console.log('Alle keys:', allKeys);
       
-      // 1. Alle Supabase auth keys uit AsyncStorage verwijderen
-      const keys = await AsyncStorage.getAllKeys();
-      const authKeys = keys.filter(key => 
+      const authKeys = allKeys.filter(key => 
         key.startsWith('supabase.') || 
         key.includes('auth') || 
+        key.includes('token') ||
         key === 'authSession'
       );
       
-      if (authKeys.length > 0) {
-        console.log('📋 Te verwijderen keys:', authKeys);
-        await AsyncStorage.multiRemove(authKeys);
-        console.log('✓ AsyncStorage opgeschoond');
+      console.log('Auth-gerelateerde keys:', authKeys);
+      
+      for (const key of authKeys) {
+        const value = await AsyncStorage.getItem(key);
+        console.log(`${key}: ${value ? (value.length > 50 ? value.substring(0, 50) + '...' : value) : 'null'}`);
       }
       
-      // 2. Bij supabase signOut aanroepen - met nieuwe client
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('❌ Fout bij Supabase signOut:', error);
-      } else {
-        console.log('✓ Supabase sessie succesvol afgesloten');
-      }
-      
-      // 3. Direct naar login navigeren
-      console.log('🚪 Navigeren naar login scherm...');
-      router.replace('/login');
-      
-      // 4. Extra reload na korte vertraging (fallback)
-      setTimeout(() => {
-        console.log('🔄 Veiligheidscheck: extra navigatie naar login');
-        router.push('/login');
-      }, 500);
-      
+      Alert.alert('Auth Debug', `${authKeys.length} auth keys gevonden. Bekijk de console voor details.`);
     } catch (error) {
-      console.error('❌ Fout bij volledig uitloggen:', error);
-      
-      // Zelfs bij fouten proberen we naar login te navigeren
-      try {
-        router.replace('/login');
-      } catch (navError) {
-        console.error('Navigatie fout:', navError);
-      }
-    } finally {
-      setLoading(false);
+      console.error('Debug fout:', error);
+      Alert.alert('Debug Fout', 'Kan auth informatie niet ophalen.');
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Uitloggen',
-      'Weet je zeker dat je wilt uitloggen?',
-      [
-        {
-          text: 'Annuleren',
-          style: 'cancel'
-        },
-        {
-          text: 'Uitloggen',
-          onPress: completeSignOut,
-          style: 'destructive'
-        }
-      ]
-    );
-  };
-
-  const handleBack = () => {
-    router.back();
-  };
-
-  if (loading) {
-    return (
-      <ThemedView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#43976A" />
-        <ThemedText style={styles.loadingText}>Profiel laden...</ThemedText>
-      </ThemedView>
-    );
-  }
-
   return (
     <ThemedView style={styles.container}>
-      <AppHeader 
-        title="Mijn Profiel"
-        leftIconName="arrow-back"
-        onLeftIconPress={handleBack}
-        showRightIcon={false}
-      />
-      
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Profielkaart met basic info */}
-        <View style={styles.profileCard}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.header}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <ThemedText style={styles.avatarText}>
-                {userProfile?.username.charAt(0).toUpperCase()}
-              </ThemedText>
+              <Ionicons name="person" size={50} color="#fff" />
             </View>
           </View>
           
-          <ThemedText style={styles.username}>{userProfile?.username}</ThemedText>
-          <ThemedText style={styles.email}>{userProfile?.email}</ThemedText>
-          
-          <View style={styles.infoContainer}>
-            <View style={styles.infoItem}>
-              <Ionicons name="calendar-outline" size={20} color="#666" />
-              <ThemedText style={styles.infoText}>
-                Lid sinds: {userProfile?.created_at}
-              </ThemedText>
-            </View>
-          </View>
+          <ThemedText style={styles.name}>{user?.email || 'Gebruiker'}</ThemedText>
+          <ThemedText style={styles.role}>{isAdmin ? 'Administrator' : 'Gebruiker'}</ThemedText>
         </View>
         
-        {/* Instellingen sectie */}
-        <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Instellingen</ThemedText>
-          
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="notifications-outline" size={24} color="#43976A" />
-            <ThemedText style={styles.menuText}>Notificaties</ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="lock-closed-outline" size={24} color="#43976A" />
-            <ThemedText style={styles.menuText}>Privacy & Beveiliging</ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="color-palette-outline" size={24} color="#43976A" />
-            <ThemedText style={styles.menuText}>Weergave</ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Account sectie */}
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>Account</ThemedText>
           
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="person-outline" size={24} color="#43976A" />
-            <ThemedText style={styles.menuText}>Profiel bewerken</ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/')}>
+            <Ionicons name="home-outline" size={24} color="#43976A" />
+            <ThemedText style={styles.menuItemText}>Home</ThemedText>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="help-circle-outline" size={24} color="#43976A" />
-            <ThemedText style={styles.menuText}>Help & Support</ThemedText>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          <TouchableOpacity style={styles.menuItem} onPress={showAuthDebug}>
+            <Ionicons name="bug-outline" size={24} color="#43976A" />
+            <ThemedText style={styles.menuItemText}>Bekijk Auth Debug</ThemedText>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#EA4335" />
-            <ThemedText style={styles.logoutText}>Uitloggen</ThemedText>
+          <TouchableOpacity style={styles.menuItem} onPress={handleLogout} disabled={isLoading}>
+            <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#e74c3c" style={{marginLeft: 10}} />
+            ) : (
+              <ThemedText style={[styles.menuItemText, styles.logoutText]}>Uitloggen</ThemedText>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -250,38 +103,17 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F1F1F1',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
   },
   scrollView: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  profileCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
     padding: 20,
-    margin: 16,
+  },
+  header: {
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    marginVertical: 30,
   },
   avatarContainer: {
-    marginBottom: 16,
+    marginBottom: 15,
   },
   avatar: {
     width: 100,
@@ -291,40 +123,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarText: {
-    color: 'white',
-    fontSize: 40,
+  name: {
+    fontSize: 22,
     fontWeight: 'bold',
+    marginBottom: 5,
   },
-  username: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  email: {
+  role: {
     fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-  },
-  infoContainer: {
-    width: '100%',
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 5,
-  },
-  infoText: {
-    marginLeft: 10,
-    fontSize: 14,
-    color: '#666',
+    opacity: 0.7,
   },
   section: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    margin: 16,
-    marginTop: 0,
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -334,30 +146,20 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 15,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  menuText: {
-    flex: 1,
-    marginLeft: 15,
+  menuItemText: {
     fontSize: 16,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginTop: 8,
+    marginLeft: 15,
   },
   logoutText: {
-    marginLeft: 15,
-    fontSize: 16,
-    color: '#EA4335',
-    fontWeight: '500',
+    color: '#e74c3c',
   },
 }); 
