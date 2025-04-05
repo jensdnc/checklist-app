@@ -162,35 +162,30 @@ function AppNavigator() {
       <Tabs.Screen
         name="(tabs)"
         options={{
-          href: null,
           tabBarButton: () => null,
         }}
       />
       <Tabs.Screen
         name="login"
         options={{
-          href: null,
           tabBarButton: () => null,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          href: null,
           tabBarButton: () => null,
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
-          href: null,
           tabBarButton: () => null,
         }}
       />
       <Tabs.Screen
         name="+not-found"
         options={{
-          href: null,
           tabBarButton: () => null,
         }}
       />
