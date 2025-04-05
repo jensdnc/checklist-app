@@ -174,10 +174,21 @@ export default function HomeScreen() {
       >
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeCard}>
-            <ThemedText style={styles.welcome}>Welkom, {username}!</ThemedText>
-            <ThemedText style={styles.welcomeSubtitle}>
+            <Text style={{
+              fontSize: 28,
+              fontWeight: 'bold',
+              color: 'white',
+              lineHeight: 36,
+              paddingTop: 2,
+            }}>Welkom, {username}!</Text>
+            <Text style={{
+              fontSize: 16,
+              marginTop: 8,
+              color: 'rgba(255, 255, 255, 0.9)',
+              lineHeight: 22,
+            }}>
               Wat wil je vandaag doen?
-            </ThemedText>
+            </Text>
           </View>
         </View>
         
@@ -248,15 +259,15 @@ const styles = StyleSheet.create({
   },
   welcomeSection: {
     paddingHorizontal: 20,
-    paddingTop: 80,
+    paddingTop: 65,
     paddingBottom: 30,
     zIndex: 10,
   },
   welcomeCard: {
     backgroundColor: '#43976A',
     borderRadius: 16,
-    padding: 20,
-    paddingTop: 26,
+    padding: 24,
+    paddingTop: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -268,6 +279,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
     marginTop: 6,
+    lineHeight: 36,
   },
   welcomeSubtitle: {
     fontSize: 16,
