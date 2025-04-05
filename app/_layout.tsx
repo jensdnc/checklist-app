@@ -72,9 +72,39 @@ export default function AppLayout() {
     };
   }, [isReady]);
 
+  // Extra helper functie om AsyncStorage te debuggen
+  const debugAuthStorage = async () => {
+    try {
+      console.log('===== DEBUG AUTH STORAGE =====');
+      const keys = await AsyncStorage.getAllKeys();
+      console.log('Alle AsyncStorage keys:', keys);
+      
+      // Zoek Supabase gerelateerde keys
+      const supabaseKeys = keys.filter(key => 
+        key.startsWith('supabase.') || 
+        key.includes('auth') || 
+        key === 'authSession'
+      );
+      
+      console.log('Supabase keys:', supabaseKeys);
+      
+      // Log de inhoud van de Supabase keys
+      for (const key of supabaseKeys) {
+        const value = await AsyncStorage.getItem(key);
+        console.log(`${key}: ${value ? (value.length > 50 ? value.substring(0, 50) + '...' : value) : 'null'}`);
+      }
+      console.log('===== EINDE DEBUG =====');
+    } catch (error) {
+      console.error('Debug storage error:', error);
+    }
+  };
+
   // Functie om de authenticatiestatus te controleren
   const checkAuthenticationStatus = async () => {
     try {
+      // Debug AsyncStorage om auth problemen te helpen oplossen
+      await debugAuthStorage();
+      
       console.log('Controleren van gebruikerssessie...');
       const { data, error } = await supabase.auth.getSession();
       
